@@ -2,29 +2,56 @@ import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import './popup.css';
 
+interface ServerInfo {
+  token: string;
+  projectPath: string;
+  projectName: string;
+  port: number;
+  pid: number;
+  startedAt: string;
+}
+
 function Popup() {
   const [isActive, setIsActive] = useState(false);
-  const [mcpToken, setMcpToken] = useState('');
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
-  const [showTokenInput, setShowTokenInput] = useState(false);
+  const [connectedProject, setConnectedProject] = useState<string | null>(null);
+  const [availableServers, setAvailableServers] = useState<ServerInfo[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Load initial state
+  // Load initial state and fetch available servers
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'GET_STATE' }, (response) => {
       if (response) {
         setIsActive(response.isActive || false);
-        setMcpToken(response.mcpToken || '');
         setConnectionStatus(response.connectionStatus || 'disconnected');
+        setConnectedProject(response.connectedProject || null);
       }
     });
+
+    fetchServers();
   }, []);
+
+  // Fetch available servers from discovery endpoint
+  const fetchServers = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('http://localhost:3848/servers');
+      if (response.ok) {
+        const servers = await response.json();
+        setAvailableServers(servers);
+      }
+    } catch (error) {
+      // Discovery server not running, no servers available
+      setAvailableServers([]);
+    }
+    setLoading(false);
+  };
 
   // Toggle active state
   const handleToggle = async () => {
     const newState = !isActive;
     setIsActive(newState);
 
-    // Get current tab and toggle
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab.id) {
       chrome.tabs.sendMessage(tab.id, { type: 'SET_ACTIVE', active: newState });
@@ -33,22 +60,32 @@ function Popup() {
     chrome.runtime.sendMessage({ type: 'SET_ACTIVE', active: newState });
   };
 
-  // Connect to MCP
-  const handleConnect = () => {
-    if (mcpToken.trim()) {
-      chrome.runtime.sendMessage({ type: 'CONNECT_MCP', token: mcpToken.trim() }, () => {
-        // Poll for status update after connecting
-        setTimeout(() => {
-          chrome.runtime.sendMessage({ type: 'GET_STATE' }, (response) => {
-            if (response) {
-              setConnectionStatus(response.connectionStatus || 'disconnected');
-            }
-          });
-        }, 500);
-      });
-      setShowTokenInput(false);
-      setConnectionStatus('connecting');
-    }
+  // Connect to a server
+  const handleConnect = (server: ServerInfo) => {
+    setConnectionStatus('connecting');
+    chrome.runtime.sendMessage({
+      type: 'CONNECT_MCP',
+      token: server.token,
+      projectName: server.projectName
+    }, () => {
+      setTimeout(() => {
+        chrome.runtime.sendMessage({ type: 'GET_STATE' }, (response) => {
+          if (response) {
+            setConnectionStatus(response.connectionStatus || 'disconnected');
+            setConnectedProject(response.connectedProject || server.projectName);
+          }
+        });
+      }, 500);
+    });
+  };
+
+  // Disconnect
+  const handleDisconnect = () => {
+    chrome.runtime.sendMessage({ type: 'DISCONNECT_MCP' }, () => {
+      setConnectionStatus('disconnected');
+      setConnectedProject(null);
+      fetchServers();
+    });
   };
 
   const statusColors: Record<string, string> = {
@@ -58,13 +95,6 @@ function Popup() {
     error: '#ef4444',
   };
 
-  const statusLabels: Record<string, string> = {
-    disconnected: 'Not connected',
-    connecting: 'Connecting...',
-    connected: 'Connected to Claude Code',
-    error: 'Connection error',
-  };
-
   return (
     <div className="popup">
       <div className="popup-header">
@@ -72,7 +102,7 @@ function Popup() {
         <div
           className="status-dot"
           style={{ backgroundColor: statusColors[connectionStatus] }}
-          title={statusLabels[connectionStatus]}
+          title={connectionStatus}
         />
       </div>
 
@@ -88,38 +118,49 @@ function Popup() {
           </button>
         </div>
 
-        {/* Connection status */}
+        {/* Connection section */}
         <div className="status-section">
-          <div className="status-row">
-            <span className="status-label">Claude Code MCP</span>
-            <span
-              className="status-value"
-              style={{ color: statusColors[connectionStatus] }}
-            >
-              {statusLabels[connectionStatus]}
-            </span>
-          </div>
+          {connectionStatus === 'connected' ? (
+            <>
+              <div className="connected-info">
+                <span className="connected-label">Connected to:</span>
+                <span className="connected-project">{connectedProject}</span>
+              </div>
+              <button className="disconnect-btn" onClick={handleDisconnect}>
+                Disconnect
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="servers-header">
+                <span>Available Claude Code instances:</span>
+                <button className="refresh-btn" onClick={fetchServers} title="Refresh">
+                  ↻
+                </button>
+              </div>
 
-          {connectionStatus === 'disconnected' && (
-            <button
-              className="connect-btn"
-              onClick={() => setShowTokenInput(!showTokenInput)}
-            >
-              {showTokenInput ? 'Cancel' : 'Connect'}
-            </button>
-          )}
-
-          {showTokenInput && (
-            <div className="token-input-section">
-              <input
-                type="text"
-                placeholder="Enter MCP token"
-                value={mcpToken}
-                onChange={(e) => setMcpToken(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
-              />
-              <button onClick={handleConnect}>Connect</button>
-            </div>
+              {loading ? (
+                <div className="loading">Searching...</div>
+              ) : availableServers.length > 0 ? (
+                <div className="server-list">
+                  {availableServers.map((server) => (
+                    <button
+                      key={server.pid}
+                      className="server-item"
+                      onClick={() => handleConnect(server)}
+                    >
+                      <span className="server-name">{server.projectName}</span>
+                      <span className="server-path">{server.projectPath}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="no-servers">
+                  <p>No Claude Code instances found.</p>
+                  <p className="hint">Start Claude Code in a project directory.</p>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -127,35 +168,16 @@ function Popup() {
         <div className="instructions">
           <h3>How to use:</h3>
           <ol>
-            <li>Click the toggle to enable</li>
-            <li>Hover over elements to see info</li>
-            <li>Click to select an element</li>
-            <li>Adjust visually or type feedback</li>
-            <li>Click Confirm to send to Claude</li>
+            <li>Connect to a Claude Code instance above</li>
+            <li>Enable the toggle, then click elements</li>
+            <li>Type feedback and click Confirm</li>
           </ol>
-        </div>
-
-        {/* Keyboard shortcuts */}
-        <div className="shortcuts">
-          <h3>Shortcuts:</h3>
-          <div className="shortcut-row">
-            <kbd>Esc</kbd>
-            <span>Deselect / Disable</span>
-          </div>
-          <div className="shortcut-row">
-            <kbd>⌘Z</kbd>
-            <span>Undo changes</span>
-          </div>
-          <div className="shortcut-row">
-            <kbd>⌘Enter</kbd>
-            <span>Confirm & send</span>
-          </div>
         </div>
       </div>
 
       <div className="popup-footer">
         <span>v0.1.0</span>
-        <a href="https://github.com/your-repo" target="_blank" rel="noopener">
+        <a href="https://github.com/coleschaffer/visual-feedback-tool" target="_blank" rel="noopener">
           GitHub
         </a>
       </div>

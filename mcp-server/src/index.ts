@@ -5,9 +5,82 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { WebSocketServer, WebSocket } from 'ws';
+import { createServer } from 'http';
 import { exec } from 'child_process';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'fs';
+import { homedir } from 'os';
+import { join, basename } from 'path';
 import { generateToken } from './auth/tokenGenerator.js';
 import { ChangeQueue } from './store/changeQueue.js';
+
+// Server registry for auto-discovery
+const REGISTRY_DIR = join(homedir(), '.visual-feedback');
+const REGISTRY_FILE = join(REGISTRY_DIR, 'servers.json');
+
+interface ServerEntry {
+  token: string;
+  projectPath: string;
+  projectName: string;
+  port: number;
+  pid: number;
+  startedAt: string;
+}
+
+function registerServer(token: string, port: number) {
+  try {
+    mkdirSync(REGISTRY_DIR, { recursive: true });
+
+    let servers: Record<string, ServerEntry> = {};
+    if (existsSync(REGISTRY_FILE)) {
+      try {
+        servers = JSON.parse(readFileSync(REGISTRY_FILE, 'utf-8'));
+      } catch {
+        servers = {};
+      }
+    }
+
+    // Clean up stale entries (servers that are no longer running)
+    for (const [pid, entry] of Object.entries(servers)) {
+      try {
+        process.kill(parseInt(pid), 0); // Check if process exists
+      } catch {
+        delete servers[pid]; // Process doesn't exist, remove entry
+      }
+    }
+
+    const projectPath = process.cwd();
+    servers[process.pid.toString()] = {
+      token,
+      projectPath,
+      projectName: basename(projectPath),
+      port,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+    };
+
+    writeFileSync(REGISTRY_FILE, JSON.stringify(servers, null, 2));
+    console.error(`Registered server for project: ${basename(projectPath)}`);
+  } catch (error) {
+    console.error('Failed to register server:', error);
+  }
+}
+
+function unregisterServer() {
+  try {
+    if (existsSync(REGISTRY_FILE)) {
+      const servers = JSON.parse(readFileSync(REGISTRY_FILE, 'utf-8'));
+      delete servers[process.pid.toString()];
+      writeFileSync(REGISTRY_FILE, JSON.stringify(servers, null, 2));
+    }
+  } catch (error) {
+    console.error('Failed to unregister server:', error);
+  }
+}
+
+// Clean up on exit
+process.on('exit', unregisterServer);
+process.on('SIGINT', () => { unregisterServer(); process.exit(); });
+process.on('SIGTERM', () => { unregisterServer(); process.exit(); });
 
 // Auto-apply changes using a headless Claude process
 function autoApplyChanges(changeId: string, feedback: string, selector: string) {
@@ -144,6 +217,9 @@ function startWebSocketServer() {
     });
 
     console.error('WebSocket server started on port 3847');
+
+    // Register for auto-discovery
+    registerServer(TOKEN, 3847);
   } catch (error) {
     console.error('Failed to start WebSocket server:', error);
   }
@@ -151,6 +227,59 @@ function startWebSocketServer() {
 
 // Start WebSocket server
 startWebSocketServer();
+
+// HTTP server for discovery (serves list of available servers)
+const httpServer = createServer((req, res) => {
+  // CORS headers for extension access
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
+
+  if (req.url === '/servers' && req.method === 'GET') {
+    try {
+      let servers: Record<string, ServerEntry> = {};
+      if (existsSync(REGISTRY_FILE)) {
+        servers = JSON.parse(readFileSync(REGISTRY_FILE, 'utf-8'));
+
+        // Filter out stale servers
+        for (const [pid, entry] of Object.entries(servers)) {
+          try {
+            process.kill(parseInt(pid), 0);
+          } catch {
+            delete servers[pid];
+          }
+        }
+        // Update file with cleaned entries
+        writeFileSync(REGISTRY_FILE, JSON.stringify(servers, null, 2));
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(Object.values(servers)));
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to read servers' }));
+    }
+  } else {
+    res.writeHead(404);
+    res.end('Not found');
+  }
+});
+
+httpServer.listen(3848, () => {
+  console.error('Discovery server started on port 3848');
+});
+
+httpServer.on('error', (error: NodeJS.ErrnoException) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error('Discovery port 3848 already in use');
+  }
+});
 
 // Handle messages from extension
 function handleExtensionMessage(message: { type: string; payload?: VisualChange }, ws: WebSocket) {

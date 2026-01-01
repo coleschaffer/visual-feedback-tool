@@ -226,3 +226,128 @@ body {
 .popup-footer a:hover {
   text-decoration: underline;
 }
+
+/* Server discovery styles */
+.servers-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.refresh-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: #6b7280;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.refresh-btn:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.server-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.server-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: 10px 12px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.server-item:hover {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.server-name {
+  font-weight: 500;
+  color: #1f2937;
+  font-size: 13px;
+}
+
+.server-path {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.loading {
+  text-align: center;
+  padding: 16px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.no-servers {
+  text-align: center;
+  padding: 16px 8px;
+}
+
+.no-servers p {
+  color: #6b7280;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.no-servers .hint {
+  color: #9ca3af;
+  font-size: 11px;
+}
+
+.connected-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.connected-label {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.connected-project {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.disconnect-btn {
+  width: 100%;
+  padding: 8px 16px;
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.disconnect-btn:hover {
+  background: #e5e7eb;
+  color: #374151;
+}

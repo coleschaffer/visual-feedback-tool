@@ -25,6 +25,7 @@ interface MCPResponse {
 let isActive = false;
 let mcpToken: string | null = null;
 let mcpSocket: WebSocket | null = null;
+let connectedProject: string | null = null;
 let pendingChanges: VisualChange[] = [];
 
 // Handle messages from content script
@@ -40,7 +41,12 @@ async function handleMessage(
 ) {
   switch (message.type) {
     case 'GET_STATE':
-      sendResponse({ isActive, mcpToken, connectionStatus: getConnectionStatus() });
+      sendResponse({
+        isActive,
+        mcpToken,
+        connectionStatus: getConnectionStatus(),
+        connectedProject
+      });
       break;
 
     case 'SET_ACTIVE':
@@ -80,10 +86,22 @@ async function handleMessage(
     case 'CONNECT_MCP':
       if (message.token) {
         mcpToken = message.token;
-        await chrome.storage.local.set({ mcpToken });
+        connectedProject = (message as any).projectName || null;
+        await chrome.storage.local.set({ mcpToken, connectedProject });
         connectToMCP();
         sendResponse({ success: true });
       }
+      break;
+
+    case 'DISCONNECT_MCP':
+      if (mcpSocket) {
+        mcpSocket.close();
+        mcpSocket = null;
+      }
+      mcpToken = null;
+      connectedProject = null;
+      await chrome.storage.local.remove(['mcpToken', 'connectedProject']);
+      sendResponse({ success: true });
       break;
 
     case 'CHECK_CONNECTION':
@@ -260,9 +278,10 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // Load token on startup
 chrome.runtime.onStartup.addListener(async () => {
-  const result = await chrome.storage.local.get(['mcpToken']);
+  const result = await chrome.storage.local.get(['mcpToken', 'connectedProject']);
   if (result.mcpToken) {
     mcpToken = result.mcpToken;
+    connectedProject = result.connectedProject || null;
     connectToMCP();
   }
 });
