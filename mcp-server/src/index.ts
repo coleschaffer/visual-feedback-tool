@@ -91,8 +91,13 @@ process.on('SIGINT', () => { unregisterServer(); process.exit(); });
 process.on('SIGTERM', () => { unregisterServer(); process.exit(); });
 
 // Auto-submit feedback to the running Claude Code terminal using AppleScript
-function autoSubmitToTerminal(feedback: string, selector: string) {
-  const message = `Apply visual feedback: "${feedback}" to element matching "${selector.split('>').pop()?.trim()}"`;
+function autoSubmitToTerminal(feedback: string, selector: string, classes: string[]) {
+  // Use class names for cleaner identification
+  const elementId = classes.length > 0
+    ? classes[0].replace(/__.+$/, '') // Remove CSS module hash
+    : selector.split('>').pop()?.trim() || 'element';
+
+  const message = `Add this feedback to ToDo: "${feedback}" on .${elementId}`;
 
   console.error('📤 Submitting to Claude Code terminal...');
   console.error(`   Message: ${message}`);
@@ -101,11 +106,11 @@ function autoSubmitToTerminal(feedback: string, selector: string) {
   const script = `
     tell application "Terminal"
       activate
-      delay 0.3
+      delay 0.5
       tell application "System Events"
         keystroke "${message.replace(/"/g, '\\"').replace(/\n/g, ' ')}"
-        delay 0.1
-        keystroke return
+        delay 0.3
+        key code 36
       end tell
     end tell
   `;
@@ -357,7 +362,11 @@ function handleExtensionMessage(message: { type: string; payload?: VisualChange 
 
     // Auto-submit to the running Claude Code terminal
     setTimeout(() => {
-      autoSubmitToTerminal(message.payload!.feedback, message.payload!.element.selector);
+      autoSubmitToTerminal(
+        message.payload!.feedback,
+        message.payload!.element.selector,
+        message.payload!.element.classes || []
+      );
     }, 500);
   }
 }
