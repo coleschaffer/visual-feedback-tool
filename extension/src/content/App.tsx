@@ -1,26 +1,26 @@
 import { useEffect, useCallback, useState } from 'react';
 import { useStore } from '../shared/store';
 import { ElementHighlight } from './overlay/ElementHighlight';
-import { MeasureLines } from './overlay/MeasureLines';
 import { BreadcrumbBar } from './overlay/BreadcrumbBar';
 import { FloatingPanel } from './overlay/FloatingPanel';
-import { ResizeHandles } from './controls/ResizeHandles';
 import { getElementInfo } from './selection/ElementTracker';
-import { calculateMeasureDistances } from './selection/MeasureCalculator';
+import type { ElementInfo } from '../shared/types';
+
+// Store selected elements with their fixed positions
+interface SelectedElementWithPosition extends ElementInfo {
+  fixedRect: DOMRect; // Position at time of selection (won't move on scroll)
+}
 
 export function App() {
   const {
     isActive,
-    selectedElement,
     hoveredElement,
-    measureDistances,
     setActive,
-    selectElement,
     hoverElement,
-    setMeasureDistances,
   } = useStore();
 
   const [isDraggingPanel, setIsDraggingPanel] = useState(false);
+  const [selectedElements, setSelectedElements] = useState<SelectedElementWithPosition[]>([]);
 
   // Handle mouse move for hover detection
   const handleMouseMove = useCallback((e: MouseEvent) => {
@@ -33,18 +33,9 @@ export function App() {
 
     const elementInfo = getElementInfo(target);
     hoverElement(elementInfo);
+  }, [isActive, isDraggingPanel, hoverElement]);
 
-    // Calculate measure distances to nearby elements
-    if (selectedElement) {
-      const distances = calculateMeasureDistances(
-        selectedElement.rect,
-        elementInfo.rect
-      );
-      setMeasureDistances(distances);
-    }
-  }, [isActive, isDraggingPanel, selectedElement, hoverElement, setMeasureDistances]);
-
-  // Handle click to select element
+  // Handle click to select element (add to list)
   const handleClick = useCallback((e: MouseEvent) => {
     if (!isActive) return;
 
@@ -57,25 +48,26 @@ export function App() {
     e.stopPropagation();
 
     const elementInfo = getElementInfo(target);
-    selectElement(elementInfo);
-  }, [isActive, selectElement]);
+
+    // Store with fixed position at time of click
+    const elementWithFixedPos: SelectedElementWithPosition = {
+      ...elementInfo,
+      fixedRect: elementInfo.rect, // Capture position now
+    };
+
+    setSelectedElements(prev => [...prev, elementWithFixedPos]);
+  }, [isActive]);
 
   // Handle keyboard shortcuts
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') {
-      if (selectedElement) {
-        selectElement(null);
-        setMeasureDistances([]);
+      if (selectedElements.length > 0) {
+        setSelectedElements([]);
       } else if (isActive) {
         setActive(false);
       }
     }
-
-    // Cmd+Z for undo
-    if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
-      // Handle undo - will be implemented in store
-    }
-  }, [isActive, selectedElement, selectElement, setActive, setMeasureDistances]);
+  }, [isActive, selectedElements.length, setActive]);
 
   // Set up event listeners
   useEffect(() => {
@@ -116,58 +108,42 @@ export function App() {
 
   if (!isActive) return null;
 
+  // Remove a selected element by index
+  const removeSelectedElement = (index: number) => {
+    setSelectedElements(prev => prev.filter((_, i) => i !== index));
+  };
+
   return (
     <div className="vf-overlay">
-      {/* Breadcrumb bar at top */}
-      <BreadcrumbBar
-        element={selectedElement}
-        onSelectPath={(index) => {
-          if (selectedElement) {
-            const pathElement = document.querySelector(
-              selectedElement.path[index].selector
-            ) as HTMLElement;
-            if (pathElement) {
-              selectElement(getElementInfo(pathElement));
-            }
-          }
-        }}
-      />
+      {/* Breadcrumb bar at top - show for first selected element */}
+      {selectedElements.length > 0 && (
+        <BreadcrumbBar
+          element={selectedElements[0]}
+          onSelectPath={() => {}}
+        />
+      )}
 
-      {/* Hover highlight */}
-      {hoveredElement && !selectedElement && (
+      {/* Hover highlight - only show when no panels are open */}
+      {hoveredElement && selectedElements.length === 0 && (
         <ElementHighlight element={hoveredElement} type="hover" />
       )}
 
-      {/* Selected element highlight with resize handles */}
-      {selectedElement && (
-        <>
-          <ElementHighlight element={selectedElement} type="selected" />
-          <ResizeHandles
-            element={selectedElement}
-            onResize={() => {
-              // Will trigger visual change
-            }}
+      {/* Selected elements - each with highlight and panel */}
+      {selectedElements.map((element, index) => (
+        <div key={`${element.selector}-${index}`}>
+          {/* Use fixedRect for position */}
+          <ElementHighlight
+            element={{ ...element, rect: element.fixedRect }}
+            type="selected"
           />
-        </>
-      )}
-
-      {/* Measure distance lines */}
-      {measureDistances.length > 0 && (
-        <MeasureLines distances={measureDistances} />
-      )}
-
-      {/* Floating panel with visual controls and chat */}
-      {selectedElement && (
-        <FloatingPanel
-          element={selectedElement}
-          onDragStart={() => setIsDraggingPanel(true)}
-          onDragEnd={() => setIsDraggingPanel(false)}
-          onClose={() => {
-            selectElement(null);
-            setMeasureDistances([]);
-          }}
-        />
-      )}
+          <FloatingPanel
+            element={{ ...element, rect: element.fixedRect }}
+            onDragStart={() => setIsDraggingPanel(true)}
+            onDragEnd={() => setIsDraggingPanel(false)}
+            onClose={() => removeSelectedElement(index)}
+          />
+        </div>
+      ))}
     </div>
   );
 }

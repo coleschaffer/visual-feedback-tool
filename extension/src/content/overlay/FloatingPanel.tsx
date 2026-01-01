@@ -104,14 +104,11 @@ export function FloatingPanel({
       change,
     });
 
-    // Simulate completion (in real impl, wait for MCP response)
+    // Quick feedback then auto-close
+    setStatus('done');
     setTimeout(() => {
-      setStatus('done');
-      setTimeout(() => {
-        setStatus('idle');
-        setFeedback('');
-      }, 1500);
-    }, 1000);
+      onClose(); // Auto-close panel after sending
+    }, 500);
   };
 
   const panelStyle: React.CSSProperties = {
@@ -168,12 +165,6 @@ export function FloatingPanel({
             {status === 'done' && '✓ Sent'}
           </button>
 
-          {status !== 'idle' && (
-            <div className={`vf-status ${status === 'done' ? 'vf-status--success' : ''}`}>
-              {status === 'working' && 'Sending to Claude Code...'}
-              {status === 'done' && 'Change sent successfully!'}
-            </div>
-          )}
         </div>
       </div>
     </div>
