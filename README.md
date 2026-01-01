@@ -70,14 +70,28 @@ npm install
 npm run build
 ```
 
-### 4. Load Extension in Chrome
+### 4. Generate Icons
+
+```bash
+cd dist/icons
+magick -size 16x16 xc:'#3b82f6' icon16.png
+magick -size 32x32 xc:'#3b82f6' icon32.png
+magick -size 48x48 xc:'#3b82f6' icon48.png
+magick -size 128x128 xc:'#3b82f6' icon128.png
+magick -size 16x16 xc:'#22c55e' icon-active16.png
+magick -size 32x32 xc:'#22c55e' icon-active32.png
+magick -size 48x48 xc:'#22c55e' icon-active48.png
+magick -size 128x128 xc:'#22c55e' icon-active128.png
+```
+
+### 5. Load Extension in Chrome
 
 1. Open `chrome://extensions`
 2. Enable "Developer mode"
 3. Click "Load unpacked"
 4. Select the `extension/dist` folder
 
-### 5. Connect
+### 6. Connect
 
 1. Start Claude Code (MCP server starts automatically)
 2. Copy the token displayed in the terminal
