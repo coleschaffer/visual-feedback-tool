@@ -91,13 +91,12 @@ process.on('SIGINT', () => { unregisterServer(); process.exit(); });
 process.on('SIGTERM', () => { unregisterServer(); process.exit(); });
 
 // Auto-submit feedback to the running Claude Code terminal using AppleScript
-function autoSubmitToTerminal(feedback: string, selector: string, classes: string[]) {
-  // Use class names for cleaner identification
-  const elementId = classes.length > 0
-    ? classes[0].replace(/__.+$/, '') // Remove CSS module hash
-    : selector.split('>').pop()?.trim() || 'element';
+function autoSubmitToTerminal(feedback: string, selector: string, classes: string[], tag: string) {
+  // Build element representation with full class names
+  const classAttr = classes.length > 0 ? ` class="${classes.join(' ')}"` : '';
+  const elementHtml = `<${tag}${classAttr}>`;
 
-  const message = `Add this feedback to ToDo: "${feedback}" on .${elementId}`;
+  const message = `Add this feedback to ToDo: "${feedback}" on element ${elementHtml}`;
 
   console.error('📤 Submitting to Claude Code terminal...');
   console.error(`   Message: ${message}`);
@@ -365,7 +364,8 @@ function handleExtensionMessage(message: { type: string; payload?: VisualChange 
       autoSubmitToTerminal(
         message.payload!.feedback,
         message.payload!.element.selector,
-        message.payload!.element.classes || []
+        message.payload!.element.classes || [],
+        message.payload!.element.tag || 'div'
       );
     }, 500);
   }
