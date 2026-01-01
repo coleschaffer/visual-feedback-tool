@@ -13,6 +13,14 @@ import { join, basename } from 'path';
 import { generateToken } from './auth/tokenGenerator.js';
 import { ChangeQueue } from './store/changeQueue.js';
 
+// Global error handlers to prevent crashes
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason);
+});
+
 // Server registry for auto-discovery
 const REGISTRY_DIR = join(homedir(), '.visual-feedback');
 const REGISTRY_FILE = join(REGISTRY_DIR, 'servers.json');
@@ -102,8 +110,7 @@ function autoSubmitToTerminal(feedback: string, selector: string) {
     end tell
   `;
 
-  const { exec } = require('child_process');
-  exec(`osascript -e '${script.replace(/'/g, "'\"'\"'")}'`, (error: Error | null, stdout: string, stderr: string) => {
+  exec(`osascript -e '${script.replace(/'/g, "'\"'\"'")}'`, (error, stdout, stderr) => {
     if (error) {
       console.error('❌ Failed to submit to terminal:', error.message);
       // Try iTerm2 as fallback
@@ -116,7 +123,7 @@ function autoSubmitToTerminal(feedback: string, selector: string) {
           end tell
         end tell
       `;
-      exec(`osascript -e '${itermScript.replace(/'/g, "'\"'\"'")}'`, (err2: Error | null) => {
+      exec(`osascript -e '${itermScript.replace(/'/g, "'\"'\"'")}'`, (err2) => {
         if (err2) {
           console.error('❌ iTerm2 fallback also failed:', err2.message);
         } else {
@@ -499,11 +506,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       if (success) {
         // Notify extension
-        if (connectedClient?.readyState === WebSocket.OPEN) {
-          connectedClient.send(JSON.stringify({
-            type: 'CHANGE_APPLIED',
-            changeId,
-          }));
+        try {
+          if (connectedClient?.readyState === WebSocket.OPEN) {
+            connectedClient.send(JSON.stringify({
+              type: 'CHANGE_APPLIED',
+              changeId,
+            }));
+          }
+        } catch (e) {
+          console.error('Failed to notify extension:', e);
         }
 
         return {
@@ -531,12 +542,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const success = changeQueue.markFailed(changeId, reason);
 
       // Notify extension for auto-retry
-      if (connectedClient?.readyState === WebSocket.OPEN) {
-        connectedClient.send(JSON.stringify({
-          type: 'CHANGE_FAILED',
-          changeId,
-          reason,
-        }));
+      try {
+        if (connectedClient?.readyState === WebSocket.OPEN) {
+          connectedClient.send(JSON.stringify({
+            type: 'CHANGE_FAILED',
+            changeId,
+            reason,
+          }));
+        }
+      } catch (e) {
+        console.error('Failed to notify extension:', e);
       }
 
       return {
