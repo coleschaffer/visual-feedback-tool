@@ -84,13 +84,24 @@ process.on('SIGTERM', () => { unregisterServer(); process.exit(); });
 
 // Auto-apply changes using a headless Claude process
 function autoApplyChanges(changeId: string, feedback: string, selector: string) {
-  const prompt = `You are applying visual feedback from a browser extension. Use the get_visual_feedback MCP tool to get the pending change, then IMMEDIATELY find the relevant source file and implement the requested change. Do not ask for confirmation - just make the edit. After editing, use mark_change_applied to mark it complete.`;
+  const prompt = `VISUAL FEEDBACK REQUEST: "${feedback}"
+
+Element: ${selector}
+
+Instructions:
+1. First, use get_visual_feedback MCP tool to get full change details
+2. Search the codebase to find the source file containing this element
+3. Edit the file to implement the requested change
+4. Use mark_change_applied with changeId "${changeId}" when done
+
+DO NOT ask for confirmation. Just find the file and make the edit immediately.`;
   const claudePath = process.env.HOME + '/.local/bin/claude';
   const workDir = process.cwd();
 
   console.error('🔄 Spawning Claude to apply changes...');
   console.error(`   Working dir: ${workDir}`);
-  console.error(`   Claude path: ${claudePath}`);
+  console.error(`   Feedback: "${feedback}"`);
+  console.error(`   Selector: ${selector}`);
 
   // Spawn Claude in print mode (non-interactive) to apply the changes
   const child = exec(
