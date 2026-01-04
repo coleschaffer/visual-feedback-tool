@@ -33,6 +33,7 @@ export function FloatingPanel({
   const [overlayFading, setOverlayFading] = useState(false);
   const [isReferencing, setIsReferencing] = useState(false);
   const [cursorPosition, setCursorPosition] = useState(0);
+  const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dragMouseOffset = useRef({ x: 0, y: 0 });
@@ -192,6 +193,44 @@ export function FloatingPanel({
     };
   }, [isReferencing, cursorPosition, feedback, onEndReference]);
 
+  // Listen for task completion updates from background script
+  useEffect(() => {
+    if (!pendingTaskId) return;
+
+    const handleTaskUpdate = (message: { type: string; task?: { id: string; status: string } }) => {
+      if (message.type === 'TASK_UPDATE' && message.task && message.task.id === pendingTaskId) {
+        if (message.task.status === 'complete') {
+          playConfirmSound();
+          setStatus('done');
+          setPendingTaskId(null);
+          // Start fading the overlay after showing success
+          setTimeout(() => {
+            setOverlayFading(true);
+          }, 1500);
+          // Close panel after overlay fades
+          setTimeout(() => {
+            setOverlayVisible(false);
+            onClose();
+          }, 3000);
+        } else if (message.task.status === 'failed') {
+          setStatus('error');
+          setErrorMessage('Claude failed to complete the task');
+          setPendingTaskId(null);
+          setOverlayVisible(false);
+          setTimeout(() => {
+            setStatus('idle');
+            setErrorMessage(null);
+          }, 3000);
+        }
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(handleTaskUpdate);
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleTaskUpdate);
+    };
+  }, [pendingTaskId, onClose]);
+
   // Handle panel dragging
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.vf-panel-header')) {
@@ -268,32 +307,21 @@ export function FloatingPanel({
       const projectPath = storage.projectPath || '/tmp';
 
       // Send to background script and wait for response
-      const response = await new Promise<{ success: boolean; error?: string }>((resolve) => {
+      const response = await new Promise<{ success: boolean; error?: string; taskId?: string }>((resolve) => {
         chrome.runtime.sendMessage(
           { type: 'SUBMIT_FEEDBACK', change, projectPath, pageUrl: window.location.href },
           (resp) => resolve(resp || { success: false, error: 'No response from server' })
         );
       });
 
-      if (response.success) {
-        // Show working state for minimum 1.5s before transitioning to done
-        setTimeout(() => {
-          playConfirmSound();
-          setStatus('done');
-          // Start fading the overlay after showing success
-          setTimeout(() => {
-            setOverlayFading(true);
-          }, 1500);
-          // Close panel after overlay fades
-          setTimeout(() => {
-            setOverlayVisible(false);
-            onClose();
-          }, 3000);
-        }, 1500);
+      if (response.success && response.taskId) {
+        // Store task ID and wait for completion via TASK_UPDATE message
+        setPendingTaskId(response.taskId);
+        // Overlay stays visible with spinner until we get task_update
       } else {
         console.error('Failed to send feedback:', response.error);
         setStatus('error');
-        setErrorMessage(response.error || 'Failed to send to terminal');
+        setErrorMessage(response.error || 'Failed to send to server');
         setOverlayVisible(false);
         // Reset after 3 seconds
         setTimeout(() => {

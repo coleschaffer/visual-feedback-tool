@@ -181,6 +181,20 @@ async function connect(port: number) {
       try {
         const data = JSON.parse(event.data);
         console.log('[VF] Server message:', data);
+
+        // Forward task updates to all tabs
+        if (data.type === 'task_update' && data.task) {
+          chrome.tabs.query({}, (tabs) => {
+            tabs.forEach((tab) => {
+              if (tab.id) {
+                chrome.tabs.sendMessage(tab.id, {
+                  type: 'TASK_UPDATE',
+                  task: data.task,
+                }).catch(() => {});
+              }
+            });
+          });
+        }
       } catch (e) {}
     };
 
@@ -225,7 +239,7 @@ async function submitFeedback(
   change: VisualChange,
   _projectPathArg?: string,
   pageUrl?: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; taskId?: string }> {
   // Auto-reconnect if needed
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     console.log('[VF] Socket closed, attempting reconnect...');
@@ -272,8 +286,8 @@ async function submitFeedback(
       },
     }));
 
-    // For now, return success immediately - server will process async
-    return { success: true };
+    // Return taskId so content script can track completion
+    return { success: true, taskId: change.id };
   } catch (error) {
     return { success: false, error: String(error) };
   }
