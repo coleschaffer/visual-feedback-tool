@@ -11,6 +11,7 @@ interface FloatingPanelProps {
   onStartReference: () => void;
   onEndReference: () => void;
   referencedElement: ElementInfo | null;
+  onTaskSubmitted: (taskId: string, rect: DOMRect) => void;
 }
 
 export function FloatingPanel({
@@ -21,19 +22,17 @@ export function FloatingPanel({
   onStartReference,
   onEndReference,
   referencedElement,
+  onTaskSubmitted,
 }: FloatingPanelProps) {
   const { addChange } = useStore();
   const [feedback, setFeedback] = useState('');
-  const [status, setStatus] = useState<'idle' | 'working' | 'done' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
-  const [overlayVisible, setOverlayVisible] = useState(false);
-  const [overlayFading, setOverlayFading] = useState(false);
   const [isReferencing, setIsReferencing] = useState(false);
   const [cursorPosition, setCursorPosition] = useState(0);
-  const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dragMouseOffset = useRef({ x: 0, y: 0 });
@@ -193,44 +192,6 @@ export function FloatingPanel({
     };
   }, [isReferencing, cursorPosition, feedback, onEndReference]);
 
-  // Listen for task completion updates from background script
-  useEffect(() => {
-    if (!pendingTaskId) return;
-
-    const handleTaskUpdate = (message: { type: string; task?: { id: string; status: string } }) => {
-      if (message.type === 'TASK_UPDATE' && message.task && message.task.id === pendingTaskId) {
-        if (message.task.status === 'complete') {
-          playConfirmSound();
-          setStatus('done');
-          setPendingTaskId(null);
-          // Start fading the overlay after showing success
-          setTimeout(() => {
-            setOverlayFading(true);
-          }, 1500);
-          // Close panel after overlay fades
-          setTimeout(() => {
-            setOverlayVisible(false);
-            onClose();
-          }, 3000);
-        } else if (message.task.status === 'failed') {
-          setStatus('error');
-          setErrorMessage('Claude failed to complete the task');
-          setPendingTaskId(null);
-          setOverlayVisible(false);
-          setTimeout(() => {
-            setStatus('idle');
-            setErrorMessage(null);
-          }, 3000);
-        }
-      }
-    };
-
-    chrome.runtime.onMessage.addListener(handleTaskUpdate);
-    return () => {
-      chrome.runtime.onMessage.removeListener(handleTaskUpdate);
-    };
-  }, [pendingTaskId, onClose]);
-
   // Handle panel dragging
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.vf-panel-header')) {
@@ -275,12 +236,10 @@ export function FloatingPanel({
 
   // Handle confirm
   const handleConfirm = async () => {
-    if (!feedback.trim() || status === 'working') return;
+    if (!feedback.trim() || status === 'sending') return;
 
-    setStatus('working');
+    setStatus('sending');
     setErrorMessage(null);
-    setOverlayVisible(true);
-    setOverlayFading(false);
 
     try {
       // Capture element screenshot
@@ -315,14 +274,15 @@ export function FloatingPanel({
       });
 
       if (response.success && response.taskId) {
-        // Store task ID and wait for completion via TASK_UPDATE message
-        setPendingTaskId(response.taskId);
-        // Overlay stays visible with spinner until we get task_update
+        // Show "Sent!" briefly then close panel and show overlay
+        setStatus('sent');
+        setTimeout(() => {
+          onTaskSubmitted(response.taskId!, element.rect);
+        }, 500);
       } else {
         console.error('Failed to send feedback:', response.error);
         setStatus('error');
         setErrorMessage(response.error || 'Failed to send to server');
-        setOverlayVisible(false);
         // Reset after 3 seconds
         setTimeout(() => {
           setStatus('idle');
@@ -333,7 +293,6 @@ export function FloatingPanel({
       console.error('Error confirming change:', error);
       setStatus('error');
       setErrorMessage('Connection error');
-      setOverlayVisible(false);
       setTimeout(() => {
         setStatus('idle');
         setErrorMessage(null);
@@ -392,60 +351,7 @@ export function FloatingPanel({
   };
 
   return (
-    <>
-      {/* Element Status Overlay */}
-      {overlayVisible && (
-        <div
-          className={`vf-element-overlay ${overlayFading ? 'vf-element-overlay--fading' : ''}`}
-          style={{
-            position: 'fixed',
-            left: element.rect.left,
-            top: element.rect.top,
-            width: element.rect.width,
-            height: element.rect.height,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: status === 'done'
-              ? 'rgba(34, 197, 94, 0.85)'
-              : 'rgba(59, 130, 246, 0.85)',
-            borderRadius: '4px',
-            zIndex: 2147483645,
-            pointerEvents: 'none',
-            transition: 'opacity 1s ease-out',
-            opacity: overlayFading ? 0 : 1,
-          }}
-        >
-          {/* Spinner for working state */}
-          {status === 'working' && (
-            <div style={{
-              width: '32px',
-              height: '32px',
-              border: '3px solid rgba(255,255,255,0.3)',
-              borderTopColor: 'white',
-              borderRadius: '50%',
-              animation: 'vf-spin 1s linear infinite',
-            }} />
-          )}
-          {/* Checkmark for done state */}
-          {status === 'done' && (
-            <svg
-              width="32"
-              height="32"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="white"
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          )}
-        </div>
-      )}
-
-      <div
+    <div
         ref={panelRef}
         className="vf-panel"
         style={panelStyle}
@@ -540,16 +446,16 @@ export function FloatingPanel({
           />
 
           <button
-            className={`vf-confirm-btn ${status === 'working' ? 'vf-confirm-btn--working' : ''}`}
+            className={`vf-confirm-btn ${status === 'sending' ? 'vf-confirm-btn--working' : ''}`}
             onClick={handleConfirm}
-            disabled={status === 'working' || !feedback.trim()}
+            disabled={status === 'sending' || status === 'sent' || !feedback.trim()}
             style={{
-              background: status === 'done' ? '#22c55e' : status === 'error' ? '#ef4444' : '#22c55e'
+              background: status === 'sent' ? '#22c55e' : status === 'error' ? '#ef4444' : '#22c55e'
             }}
           >
             {status === 'idle' && 'Confirm'}
-            {status === 'working' && 'Sending...'}
-            {status === 'done' && '✓ Sent'}
+            {status === 'sending' && 'Sending...'}
+            {status === 'sent' && '✓ Sent!'}
             {status === 'error' && '✕ Failed'}
           </button>
           {errorMessage && (
@@ -566,29 +472,5 @@ export function FloatingPanel({
         </div>
       </div>
     </div>
-    </>
   );
-}
-
-// Play subtle confirmation sound
-function playConfirmSound() {
-  try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-
-    oscillator.frequency.value = 800;
-    oscillator.type = 'sine';
-
-    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
-
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.1);
-  } catch {
-    // Audio not available
-  }
 }

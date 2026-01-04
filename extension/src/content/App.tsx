@@ -18,6 +18,15 @@ export function App() {
   const [currentRect, setCurrentRect] = useState<DOMRect | null>(null);
   const [isReferencing, setIsReferencing] = useState(false);
   const [referencedElement, setReferencedElement] = useState<ElementInfo | null>(null);
+
+  // Task overlay state (persists after panel closes)
+  const [pendingTask, setPendingTask] = useState<{
+    taskId: string;
+    rect: DOMRect;
+    status: 'working' | 'done' | 'error';
+    fading: boolean;
+  } | null>(null);
+
   const selectedDomElement = useRef<HTMLElement | null>(null);
   const hoveredDomElement = useRef<Element | null>(null);
   const lastMousePos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -162,6 +171,58 @@ export function App() {
     setIsReferencing(false);
     // Don't clear referencedElement here - FloatingPanel will handle it
   }, []);
+
+  // Handle task submission - show overlay and close panel
+  const handleTaskSubmitted = useCallback((taskId: string, rect: DOMRect) => {
+    setPendingTask({ taskId, rect, status: 'working', fading: false });
+    clearSelection(); // Close the panel
+  }, [clearSelection]);
+
+  // Listen for task completion updates
+  useEffect(() => {
+    if (!pendingTask) return;
+
+    const handleTaskUpdate = (message: { type: string; task?: { id: string; status: string } }) => {
+      if (message.type === 'TASK_UPDATE' && message.task && message.task.id === pendingTask.taskId) {
+        if (message.task.status === 'complete') {
+          // Play sound and show success
+          try {
+            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            oscillator.frequency.value = 800;
+            oscillator.type = 'sine';
+            gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.1);
+          } catch {}
+
+          setPendingTask(prev => prev ? { ...prev, status: 'done' } : null);
+          // Start fading after showing success
+          setTimeout(() => {
+            setPendingTask(prev => prev ? { ...prev, fading: true } : null);
+          }, 1500);
+          // Remove overlay after fade
+          setTimeout(() => {
+            setPendingTask(null);
+          }, 3000);
+        } else if (message.task.status === 'failed') {
+          setPendingTask(prev => prev ? { ...prev, status: 'error' } : null);
+          setTimeout(() => {
+            setPendingTask(null);
+          }, 3000);
+        }
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(handleTaskUpdate);
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleTaskUpdate);
+    };
+  }, [pendingTask?.taskId]);
 
   // Handle keyboard shortcuts (when active)
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -372,8 +433,78 @@ export function App() {
             onStartReference={handleStartReference}
             onEndReference={handleEndReference}
             referencedElement={referencedElement}
+            onTaskSubmitted={handleTaskSubmitted}
           />
         </>
+      )}
+
+      {/* Task progress overlay (persists after panel closes) */}
+      {pendingTask && (
+        <div
+          style={{
+            position: 'fixed',
+            left: pendingTask.rect.left,
+            top: pendingTask.rect.top,
+            width: pendingTask.rect.width,
+            height: pendingTask.rect.height,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: pendingTask.status === 'done'
+              ? 'rgba(34, 197, 94, 0.85)'
+              : pendingTask.status === 'error'
+              ? 'rgba(239, 68, 68, 0.85)'
+              : 'rgba(59, 130, 246, 0.85)',
+            borderRadius: '4px',
+            zIndex: 2147483645,
+            pointerEvents: 'none',
+            transition: 'opacity 1s ease-out',
+            opacity: pendingTask.fading ? 0 : 1,
+          }}
+        >
+          {/* Spinner for working state */}
+          {pendingTask.status === 'working' && (
+            <div style={{
+              width: '32px',
+              height: '32px',
+              border: '3px solid rgba(255,255,255,0.3)',
+              borderTopColor: 'white',
+              borderRadius: '50%',
+              animation: 'vf-spin 1s linear infinite',
+            }} />
+          )}
+          {/* Checkmark for done state */}
+          {pendingTask.status === 'done' && (
+            <svg
+              width="32"
+              height="32"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="white"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          )}
+          {/* X for error state */}
+          {pendingTask.status === 'error' && (
+            <svg
+              width="32"
+              height="32"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="white"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          )}
+        </div>
       )}
     </div>
   );
