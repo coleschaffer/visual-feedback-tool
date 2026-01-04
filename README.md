@@ -123,10 +123,13 @@ cd server && node server.js > server.log 2>&1 &
 
 | Key | Action |
 |-----|--------|
+| `Cmd/Ctrl+Shift+V` | Toggle enable/disable (works anywhere) |
 | `Click` | Select element under cursor |
 | `Space` | Select currently hovered element |
 | `↑` Arrow Up | Navigate to parent element |
 | `↓` Arrow Down | Navigate to child element |
+| `←` Arrow Left | Navigate to previous sibling |
+| `→` Arrow Right | Navigate to next sibling |
 | `Esc` | Deselect / Close panel |
 | `Enter` | Submit feedback |
 | `Option+Enter` | New line in feedback |
