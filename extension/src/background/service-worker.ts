@@ -21,7 +21,7 @@ let socket: WebSocket | null = null;
 let connectionStatus: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
 let serverPort: number | null = null;
 let projectPath: string = '/tmp';
-let selectedModel: string = 'claude-opus-4-20250514';
+let selectedModel: string = 'claude-opus-4-5-20251101';
 
 // Load project path, server port, and model from storage on startup
 chrome.storage.local.get(['projectPath', 'serverPort', 'selectedModel']).then((result) => {
@@ -105,7 +105,7 @@ async function handleMessage(
       break;
 
     case 'SET_MODEL':
-      selectedModel = message.model || 'claude-opus-4-20250514';
+      selectedModel = message.model || 'claude-opus-4-5-20251101';
       chrome.storage.local.set({ selectedModel });
       console.log('[VF] Model set to:', selectedModel);
       sendResponse({ success: true });

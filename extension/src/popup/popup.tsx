@@ -21,11 +21,11 @@ interface Task {
   commitUrl?: string | null;
 }
 
-type ModelOption = 'claude-opus-4-20250514' | 'claude-sonnet-4-20250514';
+type ModelOption = 'claude-opus-4-5-20251101' | 'claude-sonnet-4-5-20241022';
 
 const MODEL_LABELS: Record<ModelOption, string> = {
-  'claude-opus-4-20250514': 'Opus 4',
-  'claude-sonnet-4-20250514': 'Sonnet 4',
+  'claude-opus-4-5-20251101': 'Opus 4.5',
+  'claude-sonnet-4-5-20241022': 'Sonnet 4.5',
 };
 
 function Popup() {
@@ -35,7 +35,7 @@ function Popup() {
   const [serverStatus, setServerStatus] = useState<'checking' | 'running' | 'stopped'>('checking');
   const [serverPort, setServerPort] = useState<number | null>(null);
   const [projectPath, setProjectPath] = useState('');
-  const [selectedModel, setSelectedModel] = useState<ModelOption>('claude-opus-4-20250514');
+  const [selectedModel, setSelectedModel] = useState<ModelOption>('claude-opus-4-5-20251101');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [loadingTasks, setLoadingTasks] = useState(false);

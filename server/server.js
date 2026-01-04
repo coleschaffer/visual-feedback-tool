@@ -315,7 +315,7 @@ wss.on('connection', (ws) => {
       if (msg.type === 'visual_feedback') {
         const { id, feedback, element, projectPath, pageUrl, model } = msg.payload;
         const taskId = id || Date.now().toString();
-        const selectedModel = model || 'claude-opus-4-20250514';
+        const selectedModel = model || 'claude-opus-4-5-20251101';
 
         console.log(`\nFeedback: "${feedback}"`);
         console.log(`Project: ${projectPath}`);
