@@ -234,8 +234,8 @@ export function App() {
       }
     }
 
-    // Spacebar selects the currently hovered element
-    if (e.key === ' ' && isActive && !selectedElement) {
+    // Spacebar selects the currently hovered element (or reference element in reference mode)
+    if (e.key === ' ' && isActive && (!selectedElement || isReferencing)) {
       e.preventDefault();
       e.stopPropagation();
 
@@ -244,14 +244,21 @@ export function App() {
       if (target) {
         const htmlTarget = target instanceof HTMLElement ? target : target as unknown as HTMLElement;
         const elementInfo = getElementInfo(htmlTarget);
-        selectedDomElement.current = htmlTarget;
-        setSelectedElement(elementInfo);
-        setCurrentRect(target.getBoundingClientRect());
+
+        if (isReferencing) {
+          // In reference mode, set as referenced element
+          setReferencedElement(elementInfo);
+        } else {
+          // Normal mode, select the element
+          selectedDomElement.current = htmlTarget;
+          setSelectedElement(elementInfo);
+          setCurrentRect(target.getBoundingClientRect());
+        }
       }
     }
 
     // Arrow Up - go to parent element
-    if (e.key === 'ArrowUp' && isActive && !selectedElement && hoveredDomElement.current) {
+    if (e.key === 'ArrowUp' && isActive && (!selectedElement || isReferencing) && hoveredDomElement.current) {
       e.preventDefault();
       const parent = hoveredDomElement.current.parentElement;
       if (parent && parent !== document.body && !parent.closest('#visual-feedback-overlay')) {
@@ -263,7 +270,7 @@ export function App() {
     }
 
     // Arrow Down - go to child element at mouse position (or first visible child)
-    if (e.key === 'ArrowDown' && isActive && !selectedElement && hoveredDomElement.current) {
+    if (e.key === 'ArrowDown' && isActive && (!selectedElement || isReferencing) && hoveredDomElement.current) {
       e.preventDefault();
       const { x, y } = lastMousePos.current;
 
@@ -303,7 +310,7 @@ export function App() {
     }
 
     // Arrow Left/Right - cycle through sibling elements
-    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isActive && !selectedElement && hoveredDomElement.current) {
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isActive && (!selectedElement || isReferencing) && hoveredDomElement.current) {
       e.preventDefault();
       const parent = hoveredDomElement.current.parentElement;
       if (!parent || parent === document.body) return;
@@ -332,7 +339,7 @@ export function App() {
         hoverElement(elementInfo);
       }
     }
-  }, [isActive, selectedElement, setActive, clearSelection, hoverElement]);
+  }, [isActive, selectedElement, isReferencing, setActive, clearSelection, hoverElement, setReferencedElement]);
 
   // Global toggle shortcut - always active
   useEffect(() => {

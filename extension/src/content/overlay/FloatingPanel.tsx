@@ -304,7 +304,7 @@ export function FloatingPanel({
     left: position.x,
     top: position.y,
     cursor: isDragging ? 'grabbing' : undefined,
-    opacity: isReferencing ? 0.3 : 1,
+    opacity: isReferencing ? 0.15 : 1,
     transition: 'opacity 0.15s ease',
     pointerEvents: isReferencing ? 'none' : 'auto',
   };
