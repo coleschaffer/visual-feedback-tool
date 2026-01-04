@@ -16,6 +16,8 @@ export function App() {
   const [isDraggingPanel, setIsDraggingPanel] = useState(false);
   const [selectedElement, setSelectedElement] = useState<ElementInfo | null>(null);
   const [currentRect, setCurrentRect] = useState<DOMRect | null>(null);
+  const [isReferencing, setIsReferencing] = useState(false);
+  const [referencedElement, setReferencedElement] = useState<ElementInfo | null>(null);
   const selectedDomElement = useRef<HTMLElement | null>(null);
   const hoveredDomElement = useRef<Element | null>(null);
   const lastMousePos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -65,7 +67,8 @@ export function App() {
     // Always track mouse position
     lastMousePos.current = { x: e.clientX, y: e.clientY };
 
-    if (!isActive || isDraggingPanel || selectedElement) return;
+    // Allow hover detection during reference mode
+    if (!isActive || isDraggingPanel || (selectedElement && !isReferencing)) return;
 
     const target = getElementAtPoint(e.clientX, e.clientY);
     if (!target) return;
@@ -77,10 +80,24 @@ export function App() {
     const htmlTarget = target instanceof HTMLElement ? target : target as unknown as HTMLElement;
     const elementInfo = getElementInfo(htmlTarget);
     hoverElement(elementInfo);
-  }, [isActive, isDraggingPanel, selectedElement, hoverElement, getElementAtPoint]);
+  }, [isActive, isDraggingPanel, selectedElement, isReferencing, hoverElement, getElementAtPoint]);
 
   // Handle click to select element (one at a time)
   const handleClick = useCallback((e: MouseEvent) => {
+    // In reference mode, set the referenced element
+    if (isReferencing) {
+      const target = getElementAtPoint(e.clientX, e.clientY);
+      if (!target) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const htmlTarget = target instanceof HTMLElement ? target : target as unknown as HTMLElement;
+      const elementInfo = getElementInfo(htmlTarget);
+      setReferencedElement(elementInfo);
+      return;
+    }
+
     if (!isActive || selectedElement) return;
 
     const target = getElementAtPoint(e.clientX, e.clientY);
@@ -97,7 +114,7 @@ export function App() {
     selectedDomElement.current = htmlTarget;
     setSelectedElement(elementInfo);
     setCurrentRect(target.getBoundingClientRect());
-  }, [isActive, selectedElement, getElementAtPoint]);
+  }, [isActive, selectedElement, isReferencing, getElementAtPoint]);
 
   // Update rect continuously using RAF for smooth tracking
   useEffect(() => {
@@ -131,6 +148,19 @@ export function App() {
     selectedDomElement.current = null;
     setSelectedElement(null);
     setCurrentRect(null);
+    setIsReferencing(false);
+    setReferencedElement(null);
+  }, []);
+
+  // Reference mode handlers
+  const handleStartReference = useCallback(() => {
+    setIsReferencing(true);
+    setReferencedElement(null);
+  }, []);
+
+  const handleEndReference = useCallback(() => {
+    setIsReferencing(false);
+    // Don't clear referencedElement here - FloatingPanel will handle it
   }, []);
 
   // Handle keyboard shortcuts (when active)
@@ -322,8 +352,8 @@ export function App() {
 
   return (
     <div className="vf-overlay">
-      {/* Hover highlight - only show when no element is selected */}
-      {hoveredElement && !selectedElement && (
+      {/* Hover highlight - show when no element selected OR during reference mode */}
+      {hoveredElement && (!selectedElement || isReferencing) && (
         <ElementHighlight element={hoveredElement} type="hover" />
       )}
 
@@ -339,6 +369,9 @@ export function App() {
             onDragStart={() => setIsDraggingPanel(true)}
             onDragEnd={() => setIsDraggingPanel(false)}
             onClose={clearSelection}
+            onStartReference={handleStartReference}
+            onEndReference={handleEndReference}
+            referencedElement={referencedElement}
           />
         </>
       )}

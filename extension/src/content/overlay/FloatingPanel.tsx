@@ -8,6 +8,9 @@ interface FloatingPanelProps {
   onDragStart: () => void;
   onDragEnd: () => void;
   onClose: () => void;
+  onStartReference: () => void;
+  onEndReference: () => void;
+  referencedElement: ElementInfo | null;
 }
 
 export function FloatingPanel({
@@ -15,6 +18,9 @@ export function FloatingPanel({
   onDragStart,
   onDragEnd,
   onClose,
+  onStartReference,
+  onEndReference,
+  referencedElement,
 }: FloatingPanelProps) {
   const { addChange } = useStore();
   const [feedback, setFeedback] = useState('');
@@ -25,6 +31,8 @@ export function FloatingPanel({
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
   const [overlayVisible, setOverlayVisible] = useState(false);
   const [overlayFading, setOverlayFading] = useState(false);
+  const [isReferencing, setIsReferencing] = useState(false);
+  const [cursorPosition, setCursorPosition] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dragMouseOffset = useRef({ x: 0, y: 0 });
@@ -111,6 +119,78 @@ export function FloatingPanel({
       textareaRef.current?.focus();
     }, 50);
   }, []);
+
+  // Handle @ reference mode - detect when @ is typed
+  const handleTextareaChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = e.target.value;
+    const oldValue = feedback;
+
+    // Check if @ was just typed (new char is @)
+    if (newValue.length > oldValue.length) {
+      const newChar = newValue.slice(oldValue.length);
+      if (newChar === '@') {
+        // Store cursor position for inserting reference
+        setCursorPosition(e.target.selectionStart || newValue.length);
+        setIsReferencing(true);
+        onStartReference();
+      }
+    }
+
+    setFeedback(newValue);
+  }, [feedback, onStartReference]);
+
+  // When a referenced element is selected, insert it into the feedback
+  useEffect(() => {
+    if (referencedElement && isReferencing) {
+      // Get the element identifier
+      let refText = '';
+      if (referencedElement.classes.length > 0) {
+        refText = `.${referencedElement.classes[0]}`;
+      } else if (referencedElement.id) {
+        refText = `#${referencedElement.id}`;
+      } else {
+        refText = referencedElement.tag;
+      }
+
+      // Insert the reference at the cursor position (replacing the @)
+      const beforeAt = feedback.slice(0, cursorPosition - 1); // Remove the @
+      const afterAt = feedback.slice(cursorPosition);
+      const newFeedback = `${beforeAt}[${refText}]${afterAt}`;
+
+      setFeedback(newFeedback);
+      setIsReferencing(false);
+      onEndReference();
+
+      // Refocus textarea
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 50);
+    }
+  }, [referencedElement, isReferencing, cursorPosition, feedback, onEndReference]);
+
+  // Cancel reference mode on Escape
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isReferencing) {
+        e.stopPropagation();
+        setIsReferencing(false);
+        onEndReference();
+        // Remove the @ that triggered reference mode
+        const beforeAt = feedback.slice(0, cursorPosition - 1);
+        const afterAt = feedback.slice(cursorPosition);
+        setFeedback(beforeAt + afterAt);
+        textareaRef.current?.focus();
+      }
+    };
+
+    if (isReferencing) {
+      document.addEventListener('keydown', handleEscape, true);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape, true);
+    };
+  }, [isReferencing, cursorPosition, feedback, onEndReference]);
 
   // Handle panel dragging
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -235,6 +315,9 @@ export function FloatingPanel({
     left: position.x,
     top: position.y,
     cursor: isDragging ? 'grabbing' : undefined,
+    opacity: isReferencing ? 0.3 : 1,
+    transition: 'opacity 0.15s ease',
+    pointerEvents: isReferencing ? 'none' : 'auto',
   };
 
   // Get full element identifier for copying
@@ -447,7 +530,7 @@ export function FloatingPanel({
             className="vf-chat-input"
             placeholder="Describe what you want to change..."
             value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
+            onChange={handleTextareaChange}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 if (e.altKey) {
