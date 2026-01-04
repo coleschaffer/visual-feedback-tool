@@ -385,6 +385,16 @@ function getOverlayStyles(): string {
       font-weight: 600;
       color: #1f2937;
     }
+
+    /* Spinner animation for element overlay */
+    @keyframes vf-spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .vf-element-overlay {
+      font-family: system-ui, -apple-system, sans-serif;
+    }
   `;
 }
 

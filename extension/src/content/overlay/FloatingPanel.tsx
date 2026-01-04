@@ -23,6 +23,8 @@ export function FloatingPanel({
   const [copied, setCopied] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
+  const [overlayVisible, setOverlayVisible] = useState(false);
+  const [overlayFading, setOverlayFading] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dragMouseOffset = useRef({ x: 0, y: 0 });
@@ -158,6 +160,8 @@ export function FloatingPanel({
 
     setStatus('working');
     setErrorMessage(null);
+    setOverlayVisible(true);
+    setOverlayFading(false);
 
     try {
       // Capture element screenshot
@@ -195,13 +199,20 @@ export function FloatingPanel({
         // Play subtle sound on success
         playConfirmSound();
         setStatus('done');
+        // Start fading the overlay after a moment
         setTimeout(() => {
+          setOverlayFading(true);
+        }, 2000);
+        // Close panel after overlay fades
+        setTimeout(() => {
+          setOverlayVisible(false);
           onClose();
-        }, 400);
+        }, 4000);
       } else {
         console.error('Failed to send feedback:', response.error);
         setStatus('error');
         setErrorMessage(response.error || 'Failed to send to terminal');
+        setOverlayVisible(false);
         // Reset after 3 seconds
         setTimeout(() => {
           setStatus('idle');
@@ -212,6 +223,7 @@ export function FloatingPanel({
       console.error('Error confirming change:', error);
       setStatus('error');
       setErrorMessage('Connection error');
+      setOverlayVisible(false);
       setTimeout(() => {
         setStatus('idle');
         setErrorMessage(null);
@@ -267,12 +279,100 @@ export function FloatingPanel({
   };
 
   return (
-    <div
-      ref={panelRef}
-      className="vf-panel"
-      style={panelStyle}
-      onMouseDown={handleMouseDown}
-    >
+    <>
+      {/* Element Status Overlay */}
+      {overlayVisible && (
+        <div
+          className={`vf-element-overlay ${overlayFading ? 'vf-element-overlay--fading' : ''}`}
+          style={{
+            position: 'fixed',
+            left: element.rect.left,
+            top: element.rect.top,
+            width: element.rect.width,
+            height: element.rect.height,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: status === 'done'
+              ? 'rgba(34, 197, 94, 0.9)'
+              : 'rgba(59, 130, 246, 0.9)',
+            borderRadius: '4px',
+            zIndex: 2147483645,
+            pointerEvents: 'none',
+            transition: 'opacity 1.5s ease-out',
+            opacity: overlayFading ? 0 : 1,
+          }}
+        >
+          {status === 'working' && (
+            <>
+              <div className="vf-overlay-spinner" style={{
+                width: '32px',
+                height: '32px',
+                border: '3px solid rgba(255,255,255,0.3)',
+                borderTopColor: 'white',
+                borderRadius: '50%',
+                animation: 'vf-spin 1s linear infinite',
+                marginBottom: '12px',
+              }} />
+              <div style={{
+                color: 'white',
+                fontSize: '14px',
+                fontWeight: 600,
+                textShadow: '0 1px 2px rgba(0,0,0,0.2)',
+              }}>
+                Claude is working...
+              </div>
+              <div style={{
+                color: 'rgba(255,255,255,0.8)',
+                fontSize: '11px',
+                marginTop: '4px',
+              }}>
+                Finding file & making changes
+              </div>
+            </>
+          )}
+          {status === 'done' && (
+            <>
+              <svg
+                width="32"
+                height="32"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="white"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ marginBottom: '12px' }}
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              <div style={{
+                color: 'white',
+                fontSize: '14px',
+                fontWeight: 600,
+                textShadow: '0 1px 2px rgba(0,0,0,0.2)',
+              }}>
+                Success! Claude finished
+              </div>
+              <div style={{
+                color: 'rgba(255,255,255,0.9)',
+                fontSize: '11px',
+                marginTop: '4px',
+              }}>
+                You may need to refresh the page
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      <div
+        ref={panelRef}
+        className="vf-panel"
+        style={panelStyle}
+        onMouseDown={handleMouseDown}
+      >
       {/* Header */}
       <div className="vf-panel-header">
         <div
@@ -388,6 +488,7 @@ export function FloatingPanel({
         </div>
       </div>
     </div>
+    </>
   );
 }
 
