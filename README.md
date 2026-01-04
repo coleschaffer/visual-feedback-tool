@@ -85,11 +85,10 @@ cd server && node server.js > server.log 2>&1 &
 - Press `Esc` to cancel reference mode
 
 ### Visual Feedback
-- **Working Overlay** - Element shows spinner while Claude is processing
-- **Success Overlay** - Green checkmark when Claude finishes
+- **Working Overlay** - Blue spinner overlay on element while sending
+- **Success Overlay** - Green checkmark when task is sent successfully
 - **Fade Animation** - Overlay fades away smoothly after success
 - **Copy Element Name** - Click element name in panel header to copy selector
-- **Refresh Reminder** - "You may need to refresh the page" hint after changes
 
 ### Task History
 - View all submitted tasks in the History tab
