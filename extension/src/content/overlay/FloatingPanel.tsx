@@ -429,9 +429,10 @@ export function FloatingPanel({
           <textarea
             ref={textareaRef}
             className="vf-chat-input"
-            placeholder="Describe what you want to change..."
+            placeholder={isReferencing ? "Select an element to reference..." : "Describe what you want to change..."}
             value={feedback}
             onChange={handleTextareaChange}
+            disabled={isReferencing}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 if (e.altKey) {
