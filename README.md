@@ -85,9 +85,10 @@ cd server && node server.js > server.log 2>&1 &
 - Press `Esc` to cancel reference mode
 
 ### Toast Notifications
-- **Working Toast** - White toast with blue spinner and "Working..." text in top left
-- **Success Toast** - Green checkmark with "Success!" when task completes, then fades away
-- **Dismissible** - Click X to dismiss toast (doesn't stop the task, just hides notification)
+- **Working Toast** - White toast with blue spinner, "Working..." text, and element name in top left
+- **Success Toast** - Green checkmark with "Success!" when task completes, auto-fades after 2.5s
+- **Dismissible** - Click X on working toasts to hide (doesn't stop the task)
+- **Persistent** - Toasts stay visible even when tool is toggled off with Ctrl
 - **Multiple Tasks** - Multiple toasts stack vertically for concurrent tasks
 - **Copy Element Name** - Click element name in panel header to copy selector
 
